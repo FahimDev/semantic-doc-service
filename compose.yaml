@@ -1,0 +1,36 @@
+name: semantic-doc-service
+
+services:
+  postgres:
+    image: pgvector/pgvector:0.8.6-pg17
+    environment:
+      POSTGRES_DB: policy_vault
+      POSTGRES_USER: policy_vault
+      POSTGRES_PASSWORD: policy_vault
+    ports:
+      - "5432:5432"
+    volumes:
+      # A named volume keeps authoritative state across container recreation.
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U policy_vault -d policy_vault"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  redis:
+    image: redis:8.2-alpine
+    ports:
+      - "6379:6379"
+    volumes:
+      # Persistence is useful for observation, though cache data remains disposable.
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+volumes:
+  postgres_data:
+  redis_data:
