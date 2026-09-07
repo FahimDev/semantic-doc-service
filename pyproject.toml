@@ -1,0 +1,41 @@
+[project]
+name = "semantic-doc-service"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+authors = [
+    { name = "FahimDev", email = "ariful.islam@brainstation-23.com" }
+]
+requires-python = ">=3.12"
+dependencies = [
+    "alembic>=1.19.2",
+    "fastapi>=0.141.1",
+    "numpy>=2.5.3",
+    "pgvector>=0.5.0",
+    "psycopg[binary]>=3.3.5",
+    "pydantic>=2.13.5",
+    "pydantic-settings>=2.15.0",
+    "pypdf>=6.17.0",
+    "python-multipart>=0.0.32",
+    "redis>=8.1.0",
+    "sentence-transformers>=6.0.1",
+    "sqlalchemy>=2.0.52",
+    "uvicorn[standard]>=0.52.4",
+]
+
+[project.scripts]
+semantic-doc-service = "semantic_doc_service:main"
+
+[build-system]
+requires = ["uv_build>=0.12.10,<0.13.0"]
+build-backend = "uv_build"
+
+[dependency-groups]
+dev = [
+    "httpx>=0.28.1",
+    "mypy>=2.3.1",
+    "pytest>=9.1.1",
+    "pytest-cov>=7.1.0",
+    "reportlab>=5.0.1",
+    "ruff>=0.16.6",
+]
