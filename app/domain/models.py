@@ -28,6 +28,7 @@ class ParsedPage:
 
 @dataclass(frozen=True, slots=True)
 class ParsedDocument:
+    # dataclass removes boilerplate, frozen makes the model safe to share, and slots keeps it lean.
     pages: tuple[ParsedPage, ...]
     metadata: dict[str, str] = field(default_factory=dict)
 
@@ -35,6 +36,7 @@ class ParsedDocument:
 
 @dataclass(frozen=True, slots=True)
 class TextChunk:
+    # Chunk metadata must stay stable because later stages use these offsets to reconstruct provenance.
     page_number: int
     chunk_index: int
     char_start: int
@@ -44,6 +46,7 @@ class TextChunk:
 
 @dataclass(frozen=True, slots=True)
 class DocumentSnapshot:
+    # This snapshot is passed around read-only so different layers cannot accidentally desynchronize state.
     id: UUID
     filename: str
     content_type: str
@@ -56,17 +59,20 @@ class DocumentSnapshot:
 
 @dataclass(frozen=True, slots=True)
 class UploadResult:
+    # Small result objects make use-case responses explicit instead of returning loose tuples or dicts.
     document: DocumentSnapshot
     deduplicated: bool
 
 @dataclass(frozen=True, slots=True)
 class DeleteResult:
+    # Immutable results make deletion state easy to reason about in async workflows.
     document_id: UUID
     status: DocumentStatus
     cleanup_pending: bool
 
 @dataclass(frozen=True, slots=True)
 class SearchHit:
+    # Search results are plain data, so dataclass keeps the representation simple and test-friendly.
     document_id: UUID
     filename: str
     page_number: int
@@ -77,6 +83,7 @@ class SearchHit:
 
 @dataclass(frozen=True, slots=True)
 class AnswerSource:
+    # The answer assembler needs lightweight source metadata, not behavior.
     document_id: UUID
     filename: str
     page_number: int
@@ -86,6 +93,7 @@ class AnswerSource:
 
 @dataclass(frozen=True, slots=True)
 class QuestionResult:
+    # This aggregates the final answer plus traceability metadata for the caller.
     answer: str
     sources: tuple[AnswerSource, ...]
     knowledge_base_version: int

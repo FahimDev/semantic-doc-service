@@ -10,7 +10,7 @@ from app.core.constants import DEFAULT_EMBEDDING_MODEL, EMBEDDING_DIMENSIONS
 
 
 class Settings(BaseSettings):
-    # Environment variables override .env; unknown keys are ignored for easy deployment.
+    # Environment variables override .env; unknown keys are ignored so the same code works locally and in containers.
     model_config = SettingsConfigDict(
         env_file=".env",
         env_file_encoding="utf-8",
@@ -54,7 +54,8 @@ class Settings(BaseSettings):
         # Overlap must advance; otherwise a chunk loop can never terminate.
         if self.chunk_overlap >= self.chunk_size:
             raise ValueError("chunk_overlap must be smaller than chunk_size")
-        # Changing dimensions requires a PostgreSQL migration and Redis index rebuild.
+        # Changing dimensions requires a PostgreSQL migration and Redis index rebuild,
+        # because both systems store/search vectors with the same fixed length.
         if self.embedding_dimensions != EMBEDDING_DIMENSIONS:
             raise ValueError("change vector schema before changing embedding dimensions")
         return self
@@ -62,5 +63,6 @@ class Settings(BaseSettings):
 
 @lru_cache
 def get_settings() -> Settings:
-    # One validated settings object is reused throughout this process.
+    # lru_cache turns Settings() into a process-wide singleton after the first successful validation.
+    # That avoids re-parsing env vars on every access and keeps config reads consistent.
     return Settings()
