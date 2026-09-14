@@ -1,0 +1,12 @@
+PolicyVault Employee Handbook
+
+Learning budget
+
+Every full-time employee receives an annual learning budget of 1,200 USD. Manager approval is
+required before purchase. Reimbursement requests must include a receipt and be filed within
+30 days.
+
+Security
+
+Enable multi-factor authentication on every supported service. Report a suspected security
+incident immediately; do not wait until you confirm the cause.
