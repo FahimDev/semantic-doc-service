@@ -32,17 +32,18 @@ from app.domain.models import ParsedDocument, ParsedPage
 #   - parse(filename, content_type, data) -> ParsedDocument (method)
 # ============================================================================
 
+
 class Utf8TextParser:
     """
     Parses plain text and Markdown files (UTF-8 encoded only).
-    
+
     This class satisfies the DocumentParser Protocol without explicit inheritance.
     It handles the extraction of text content from .txt and .md files.
     """
-    
+
     # Class attribute: The name/identifier for this parser (used for logging/metadata)
     name = "utf8-text"
-    
+
     # Class attribute: File extensions this parser can handle (immutable set)
     # frozenset is used for safety—can't accidentally modify the set
     extensions = frozenset({".txt", ".md"})
@@ -50,50 +51,50 @@ class Utf8TextParser:
     def supports(self, filename: str, content_type: str, data: bytes) -> bool:
         """
         Determines if this parser can handle the given file.
-        
+
         This method is the first gate: it's called to check if a document should
         be processed by Utf8TextParser or routed to another parser.
-        
+
         Args:
             filename: The original filename (e.g., "document.txt")
             content_type: MIME type like "text/plain" or "text/markdown"
                          (intentionally unused here; we rely on extension)
             data: Raw bytes of the file (intentionally unused here)
-            
+
         Returns:
             bool: True if the file extension matches our supported extensions
-            
+
         Logic:
         - Extracts file extension from filename (e.g., ".txt" from "file.txt")
         - Converts to lowercase for case-insensitive comparison
         - Returns True only if extension is in our extensions set
-        
+
         Note: We ignore content_type and data because checking the file extension
               is sufficient. Actual validation (UTF-8 encoding, content presence)
               happens later in parse().
         """
         # The 'del' statements prevent warnings about unused parameters
         # (we intentionally ignore content_type and data in this method)
-        del content_type, data  
+        del content_type, data
         return Path(filename).suffix.lower() in self.extensions
 
     def parse(self, filename: str, content_type: str, data: bytes) -> ParsedDocument:
         """
         Parses a UTF-8 text/markdown file and returns a structured document.
-        
+
         This method performs the actual parsing: it validates the content,
         decodes bytes to text, and wraps it in a ParsedDocument object.
-        
+
         Args:
             filename: The original filename (used to extract extension metadata)
             content_type: MIME type (intentionally unused here)
             data: Raw file bytes to decode and parse
-            
+
         Returns:
             ParsedDocument: A structured object containing:
                 - pages: A tuple of ParsedPage objects (one page for plain text)
                 - metadata: Dictionary with parser name and source extension
-                
+
         Raises:
             InvalidDocumentError: If any validation fails:
                 - File contains NULL bytes (\x00)
@@ -139,18 +140,16 @@ class Utf8TextParser:
             # pages: tuple of ParsedPage objects (one page for text files)
             # page_number=1 because text files are treated as single-page documents
             pages=(ParsedPage(page_number=1, text=text),),
-            
             # metadata: dictionary storing parser info for audit/logging
             # parser: which parser processed this (useful when multiple parsers exist)
             # source_extension: original file extension (for reference/validation)
-            metadata={
-                "parser": self.name,
-                "source_extension": Path(filename).suffix.lower()
-            },
+            metadata={"parser": self.name, "source_extension": Path(filename).suffix.lower()},
         )
+
 
 class PdfTextParser:
     """Extract an existing text layer page-by-page; deliberately does not hide OCR."""
+
     name = "pypdf-text-layer"
 
     def __init__(self, max_pages: int = 100) -> None:
@@ -162,7 +161,7 @@ class PdfTextParser:
 
     def parse(self, filename: str, content_type: str, data: bytes) -> ParsedDocument:
         del filename, content_type
-        
+
         # ============================================================
         # EARLY VALIDATION: PDF Signature (Magic Bytes) Check
         # ============================================================
@@ -254,6 +253,7 @@ class PdfTextParser:
             pages=pages,
             metadata={"parser": self.name, "pdf_pages": len(pages), "text_layer": True},
         )
+
 
 class ParserRegistry:
     def __init__(self, parsers: tuple[DocumentParser, ...]) -> None:

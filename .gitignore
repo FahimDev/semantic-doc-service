@@ -9,3 +9,4 @@ __pycache__/
 htmlcov/
 data/uploads/
 benchmark-results/
+data/visualizations/

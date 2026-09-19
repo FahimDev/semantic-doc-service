@@ -1,0 +1,446 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Vector map</title>
+<style>
+  /* Categorical slots 1-3 are the only hues validated for scatter (all-pairs) in both modes;
+     more documents are told apart by shape, and anything past 12 folds into "Other". */
+  :root {
+    color-scheme: light;
+    --page: #f9f9f7;
+    --surface: #fcfcfb;
+    --ink: #0b0b0b;
+    --ink-2: #52514e;
+    --muted: #898781;
+    --grid: #e1e0d9;
+    --axis: #c3c2b7;
+    --ring: rgba(11, 11, 11, 0.10);
+    --s1: #2a78d6;
+    --s2: #eb6834;
+    --s3: #1baf7a;
+    --other: #898781;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:where(:not([data-theme="light"])) {
+      color-scheme: dark;
+      --page: #0d0d0d;
+      --surface: #1a1a19;
+      --ink: #ffffff;
+      --ink-2: #c3c2b7;
+      --grid: #2c2c2a;
+      --axis: #383835;
+      --ring: rgba(255, 255, 255, 0.10);
+      --s1: #3987e5;
+      --s2: #d95926;
+      --s3: #199e70;
+    }
+  }
+  :root[data-theme="dark"] {
+    color-scheme: dark;
+    --page: #0d0d0d;
+    --surface: #1a1a19;
+    --ink: #ffffff;
+    --ink-2: #c3c2b7;
+    --grid: #2c2c2a;
+    --axis: #383835;
+    --ring: rgba(255, 255, 255, 0.10);
+    --s1: #3987e5;
+    --s2: #d95926;
+    --s3: #199e70;
+  }
+
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--page);
+    color: var(--ink);
+    font: 14px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif;
+  }
+  .wrap { max-width: 1100px; margin: 0 auto; padding: 24px 16px 48px; }
+  h1 { margin: 0 0 4px; font-size: 20px; font-weight: 600; }
+  h2 { margin: 0 0 8px; font-size: 15px; font-weight: 600; }
+  .sub { margin: 0 0 16px; color: var(--ink-2); }
+
+  .filters { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-bottom: 12px; }
+  .filters .label { color: var(--muted); margin-right: 4px; }
+  .chip {
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 4px 10px 4px 6px; border-radius: 999px;
+    border: 1px solid var(--ring); background: var(--surface); color: var(--ink);
+    font: inherit; cursor: pointer;
+  }
+  .chip:hover { border-color: var(--axis); }
+  .chip:focus-visible, .btn:focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }
+  .chip[aria-pressed="false"] { opacity: 0.5; }
+  .chip .count { color: var(--muted); }
+
+  .card {
+    background: var(--surface); border: 1px solid var(--ring); border-radius: 12px;
+    padding: 12px; margin-bottom: 20px;
+  }
+  .plot { position: relative; }
+  #chart { display: block; width: 100%; touch-action: none; }
+  .chip svg { flex: none; }
+  .frame { fill: none; stroke: var(--axis); stroke-width: 1; }
+  .zero { stroke: var(--grid); stroke-width: 1; }
+  .axis-title { fill: var(--muted); font-size: 12px; }
+  .mark { stroke: var(--surface); stroke-width: 2; }
+  .pt { outline: none; }
+  .pt .lift { transition: transform 80ms ease-out; }
+  .pt.hot .lift { transform: scale(1.4); }
+  .pt.hot .mark, .pt:focus-visible .mark { stroke: var(--ink); }
+  .link { stroke: var(--ink-2); stroke-opacity: 0.35; stroke-width: 1; }
+  .ring { fill: none; stroke: var(--ink); stroke-width: 1.5; }
+  .tag { fill: var(--ink); font-size: 11px; font-weight: 600;
+         paint-order: stroke; stroke: var(--surface); stroke-width: 3px; }
+  .star { fill: var(--ink); stroke: var(--surface); stroke-width: 2; }
+  .note { margin: 8px 4px 0; color: var(--muted); font-size: 12px; }
+
+  #tip {
+    position: absolute; z-index: 2; pointer-events: none; max-width: 300px;
+    padding: 8px 10px; border-radius: 8px;
+    background: var(--surface); border: 1px solid var(--axis);
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12);
+    opacity: 0; transition: opacity 80ms;
+  }
+  #tip.on { opacity: 1; }
+  #tip .head { display: flex; align-items: center; gap: 8px; font-weight: 600; }
+  #tip .key { flex: none; width: 14px; height: 3px; border-radius: 2px; }
+  #tip .meta { color: var(--ink-2); margin-top: 2px; }
+  #tip .body {
+    color: var(--ink-2); margin-top: 4px; font-size: 12px;
+    display: -webkit-box; -webkit-line-clamp: 5; -webkit-box-orient: vertical; overflow: hidden;
+  }
+
+  ol.hits { margin: 0; padding: 0; list-style: none; }
+  ol.hits li { display: grid; grid-template-columns: 28px 1fr; gap: 4px 8px;
+               padding: 8px 0; border-top: 1px solid var(--grid); }
+  ol.hits li:first-child { border-top: 0; }
+  .rank { color: var(--muted); font-weight: 600; }
+  .dist { font-weight: 600; font-variant-numeric: tabular-nums; }
+  .where { color: var(--ink-2); }
+  .snippet { grid-column: 2; color: var(--ink-2); font-size: 12px; }
+
+  .btn {
+    padding: 6px 12px; border-radius: 8px; border: 1px solid var(--ring);
+    background: var(--surface); color: var(--ink); font: inherit; cursor: pointer;
+  }
+  .btn:hover { border-color: var(--axis); }
+  .table-wrap { max-height: 420px; overflow: auto; margin-top: 12px; }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th, td { text-align: left; padding: 6px 10px 6px 0; border-top: 1px solid var(--grid);
+           vertical-align: top; }
+  th { position: sticky; top: 0; background: var(--surface); color: var(--muted); font-weight: 600; }
+  td.num { font-variant-numeric: tabular-nums; }
+  td.text { color: var(--ink-2); }
+  [hidden] { display: none !important; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Chunk embeddings</h1>
+  <p class="sub" id="sub"></p>
+
+  <div class="filters" id="legend" role="group" aria-label="Documents shown on the map"></div>
+
+  <div class="card">
+    <div class="plot" id="plot">
+      <svg id="chart" role="img" aria-label="Scatter plot of chunk embeddings projected to two dimensions"></svg>
+      <div id="tip" role="status"></div>
+    </div>
+    <p class="note">
+      Axes are the two directions of greatest variance in the 384-dimensional vectors, drawn to
+      equal scale. Nearby points are usually similar in meaning, but the projection discards most
+      of the information, so a chunk can look close here and still be far in the full space.
+    </p>
+  </div>
+
+  <div class="card" id="hits-card" hidden>
+    <h2 id="hits-title"></h2>
+    <p class="note" style="margin: 0 0 8px">
+      Ranked by PostgreSQL using cosine distance (<code>&lt;=&gt;</code>): 0 is identical, larger is
+      less similar. This list is the real result; the map is only a picture of it.
+    </p>
+    <ol class="hits" id="hits"></ol>
+  </div>
+
+  <div class="card">
+    <button class="btn" id="toggle-table" aria-expanded="false" aria-controls="table-wrap">Show table view</button>
+    <div class="table-wrap" id="table-wrap" hidden></div>
+  </div>
+</div>
+
+<script type="application/json" id="data">__DATA__</script>
+<script>
+(() => {
+  const DATA = JSON.parse(document.getElementById('data').textContent);
+  const NS = 'http://www.w3.org/2000/svg';
+  const $ = (id) => document.getElementById(id);
+  const svg = $('chart'), plot = $('plot'), tip = $('tip');
+
+  // Identity = hue (first three validated slots) x shape; the 13th series is the gray "Other".
+  const SHAPES = ['circle', 'square', 'diamond', 'triangle'];
+  const OTHER = 12;
+  const shapeOf = (s) => (s >= OTHER ? 'circle' : SHAPES[Math.floor(s / 3)]);
+  const colorOf = (s) => (s >= OTHER ? 'var(--other)' : `var(--s${(s % 3) + 1})`);
+
+  const hidden = new Set();
+  const hitRank = new Map((DATA.query ? DATA.query.hits : []).map((h, i) => [h.point, i + 1]));
+  const hitDistance = new Map((DATA.query ? DATA.query.hits : []).map((h) => [h.point, h.distance]));
+
+  function el(name, attrs, parent) {
+    const node = document.createElementNS(NS, name);
+    for (const key in attrs || {}) node.setAttribute(key, attrs[key]);
+    if (parent) parent.appendChild(node);
+    return node;
+  }
+
+  function shapeEl(shape, r, parent) {
+    if (shape === 'square') return el('rect', { x: -r * 0.88, y: -r * 0.88, width: r * 1.76, height: r * 1.76 }, parent);
+    if (shape === 'diamond') return el('path', { d: `M0 ${-r * 1.25}L${r * 1.25} 0L0 ${r * 1.25}L${-r * 1.25} 0Z` }, parent);
+    if (shape === 'triangle') return el('path', { d: `M0 ${-r * 1.2}L${r * 1.12} ${r * 0.84}L${-r * 1.12} ${r * 0.84}Z` }, parent);
+    return el('circle', { r }, parent);
+  }
+
+  function starPath(r) {
+    const pts = [];
+    for (let i = 0; i < 10; i++) {
+      const radius = i % 2 === 0 ? r : r * 0.45;
+      const angle = -Math.PI / 2 + (i * Math.PI) / 5;
+      pts.push(`${(radius * Math.cos(angle)).toFixed(2)} ${(radius * Math.sin(angle)).toFixed(2)}`);
+    }
+    return `M${pts.join('L')}Z`;
+  }
+
+  const pct = (v) => `${Math.round(v * 100)}%`;
+  const squash = (text) => text.replace(/\s+/g, ' ').trim();
+  const clip = (text, n) => (squash(text).length > n ? squash(text).slice(0, n - 1) + '…' : squash(text));
+  const nodeText = (tag, className, text, parent) => {
+    const node = document.createElement(tag);
+    if (className) node.className = className;
+    node.textContent = text;
+    if (parent) parent.appendChild(node);
+    return node;
+  };
+
+  // ---- header and legend (built once) -----------------------------------------------------
+  const docs = new Set(DATA.points.map((p) => p.doc)).size;
+  $('sub').textContent =
+    `${DATA.points.length} chunks from ${docs} document${docs === 1 ? '' : 's'}, projected from 384 ` +
+    `dimensions to 2. The two axes keep ${pct(DATA.explained[0] + DATA.explained[1])} of the variance.`;
+
+  const legend = $('legend');
+  nodeText('span', 'label', 'Documents', legend);
+  DATA.series.forEach((series, index) => {
+    const chip = document.createElement('button');
+    chip.className = 'chip';
+    chip.type = 'button';
+    chip.setAttribute('aria-pressed', 'true');
+    const glyph = el('svg', { width: 16, height: 16, viewBox: '-8 -8 16 16', 'aria-hidden': 'true' });
+    const mark = shapeEl(shapeOf(index), 5, el('g', {}, glyph));
+    mark.setAttribute('fill', colorOf(index));
+    chip.appendChild(glyph);
+    nodeText('span', '', series.label, chip);
+    nodeText('span', 'count', String(series.count), chip);
+    chip.addEventListener('click', () => {
+      const off = !hidden.has(index);
+      off ? hidden.add(index) : hidden.delete(index);
+      chip.setAttribute('aria-pressed', String(!off));
+      render();
+    });
+    legend.appendChild(chip);
+  });
+
+  // ---- hit list (DB ground truth; independent of the map filter) ---------------------------
+  if (DATA.query) {
+    $('hits-card').hidden = false;
+    $('hits-title').textContent = `Nearest chunks to “${DATA.query.text}”`;
+    DATA.query.hits.forEach((hit, i) => {
+      const p = DATA.points[hit.point];
+      const li = document.createElement('li');
+      nodeText('span', 'rank', `#${i + 1}`, li);
+      const line = nodeText('div', '', '', li);
+      nodeText('span', 'dist', hit.distance.toFixed(3), line);
+      nodeText('span', 'where', `  ${p.doc} · chunk ${p.chunk}`, line);
+      nodeText('div', 'snippet', clip(p.text, 220), li);
+      $('hits').appendChild(li);
+    });
+  }
+
+  // ---- table view -------------------------------------------------------------------------
+  function buildTable() {
+    const wrap = $('table-wrap');
+    wrap.textContent = '';
+    const table = document.createElement('table');
+    const head = table.createTHead().insertRow();
+    ['Rank', 'Document', 'Page', 'Chunk', 'Distance', 'Text'].forEach((name) => {
+      const th = document.createElement('th');
+      th.textContent = name;
+      head.appendChild(th);
+    });
+    const order = DATA.points.map((_, i) => i).sort((a, b) => {
+      const ra = hitRank.get(a) || Infinity, rb = hitRank.get(b) || Infinity;
+      return ra - rb || a - b;
+    });
+    const body = table.createTBody();
+    for (const i of order) {
+      const p = DATA.points[i];
+      const row = body.insertRow();
+      const cells = [
+        hitRank.has(i) ? `#${hitRank.get(i)}` : '',
+        p.doc, String(p.page), String(p.chunk),
+        hitDistance.has(i) ? hitDistance.get(i).toFixed(3) : '',
+        clip(p.text, 160),
+      ];
+      cells.forEach((text, c) => {
+        const td = row.insertCell();
+        td.textContent = text;
+        if (c === 4) td.className = 'num';
+        if (c === 5) td.className = 'text';
+      });
+    }
+    wrap.appendChild(table);
+  }
+  $('toggle-table').addEventListener('click', (event) => {
+    const wrap = $('table-wrap');
+    const open = wrap.hidden;
+    if (open && !wrap.firstChild) buildTable();
+    wrap.hidden = !open;
+    event.currentTarget.setAttribute('aria-expanded', String(open));
+    event.currentTarget.textContent = open ? 'Hide table view' : 'Show table view';
+  });
+
+  // ---- map ----------------------------------------------------------------------------------
+  const M = { l: 44, r: 16, t: 16, b: 40 };
+  let sx = () => 0, sy = () => 0;
+  let screen = [];   // pixel position of every point, for the nearest-point hover layer
+  let groups = [];
+  let active = -1;
+
+  function layout(width, height) {
+    const xs = DATA.points.map((p) => p.x), ys = DATA.points.map((p) => p.y);
+    if (DATA.query) { xs.push(DATA.query.x); ys.push(DATA.query.y); }
+    const [minX, maxX, minY, maxY] = [Math.min(...xs), Math.max(...xs), Math.min(...ys), Math.max(...ys)];
+    const pw = width - M.l - M.r, ph = height - M.t - M.b;
+    // One scale for both axes, so distances on screen mean the same thing in x and y.
+    const k = Math.min(pw / ((maxX - minX) || 1), ph / ((maxY - minY) || 1)) * 0.92;
+    const cx = (minX + maxX) / 2, cy = (minY + maxY) / 2;
+    sx = (x) => M.l + pw / 2 + (x - cx) * k;
+    sy = (y) => M.t + ph / 2 - (y - cy) * k;
+    return { pw, ph };
+  }
+
+  function render() {
+    const width = Math.max(280, plot.clientWidth);
+    const height = Math.max(320, Math.min(640, Math.round(width * 0.62)));
+    svg.setAttribute('viewBox', `0 0 ${width} ${height}`);
+    svg.setAttribute('height', height);
+    svg.textContent = '';
+    hideTip();
+    const { pw, ph } = layout(width, height);
+
+    el('rect', { class: 'frame', x: M.l, y: M.t, width: pw, height: ph }, svg);
+    // The projection is centered, so (0, 0) is the centroid of all chunks.
+    const zx = sx(0), zy = sy(0);
+    if (zx > M.l && zx < M.l + pw) el('line', { class: 'zero', x1: zx, x2: zx, y1: M.t, y2: M.t + ph }, svg);
+    if (zy > M.t && zy < M.t + ph) el('line', { class: 'zero', x1: M.l, x2: M.l + pw, y1: zy, y2: zy }, svg);
+    const xt = el('text', { class: 'axis-title', x: M.l + pw / 2, y: height - 10, 'text-anchor': 'middle' }, svg);
+    xt.textContent = `PC 1 · ${pct(DATA.explained[0])} of variance`;
+    const yt = el('text', { class: 'axis-title', transform: `translate(14 ${M.t + ph / 2}) rotate(-90)`, 'text-anchor': 'middle' }, svg);
+    yt.textContent = `PC 2 · ${pct(DATA.explained[1])} of variance`;
+
+    screen = DATA.points.map((p) => [sx(p.x), sy(p.y)]);
+    const qx = DATA.query ? sx(DATA.query.x) : 0, qy = DATA.query ? sy(DATA.query.y) : 0;
+
+    if (DATA.query) {
+      for (const hit of DATA.query.hits) {
+        if (hidden.has(DATA.points[hit.point].s)) continue;
+        el('line', { class: 'link', x1: qx, y1: qy, x2: screen[hit.point][0], y2: screen[hit.point][1] }, svg);
+      }
+    }
+
+    groups = DATA.points.map((p, i) => {
+      if (hidden.has(p.s)) return null;
+      const group = el('g', { class: 'pt', transform: `translate(${screen[i][0]} ${screen[i][1]})`,
+                              tabindex: 0, role: 'img',
+                              'aria-label': `${p.doc}, chunk ${p.chunk}: ${clip(p.text, 80)}` }, svg);
+      const lift = el('g', { class: 'lift' }, group);
+      const mark = shapeEl(shapeOf(p.s), 5, lift);
+      mark.setAttribute('class', 'mark');
+      mark.setAttribute('fill', colorOf(p.s));
+      group.addEventListener('focus', () => show(i));
+      group.addEventListener('blur', hideTip);
+      return group;
+    });
+
+    for (const [i, rank] of hitRank) {
+      if (!groups[i]) continue;
+      el('circle', { class: 'ring', cx: screen[i][0], cy: screen[i][1], r: 10 }, svg);
+      const tag = el('text', { class: 'tag', x: screen[i][0] + 11, y: screen[i][1] - 9 }, svg);
+      tag.textContent = String(rank);
+    }
+
+    if (DATA.query) {
+      const star = el('path', { class: 'star', d: starPath(9), transform: `translate(${qx} ${qy})` }, svg);
+      star.appendChild(document.createElementNS(NS, 'title')).textContent = `Query: ${DATA.query.text}`;
+      const label = el('text', { class: 'tag', x: qx + 12, y: qy + 4 }, svg);
+      label.textContent = 'query';
+    }
+  }
+
+  // ---- hover: the pointer only has to be *nearest*, not on the 10px mark ---------------------
+  function show(i) {
+    if (active >= 0 && groups[active]) groups[active].classList.remove('hot');
+    active = i;
+    const p = DATA.points[i];
+    groups[i].classList.add('hot');
+
+    tip.textContent = '';
+    const head = nodeText('div', 'head', '', tip);
+    const key = nodeText('span', 'key', '', head);
+    key.style.background = colorOf(p.s);
+    nodeText('span', '', `${p.doc} · chunk ${p.chunk}`, head);
+    const meta = hitRank.has(i)
+      ? `Rank #${hitRank.get(i)} · cosine distance ${hitDistance.get(i).toFixed(3)}`
+      : `Page ${p.page}`;
+    nodeText('div', 'meta', meta, tip);
+    nodeText('div', 'body', squash(p.text), tip);
+
+    tip.classList.add('on');
+    const [x, y] = screen[i];
+    const w = tip.offsetWidth, h = tip.offsetHeight, room = plot.clientWidth;
+    let left = x + 16, top = y - h - 12;
+    if (left + w > room) left = x - w - 16;
+    if (left < 0) left = Math.max(0, Math.min(room - w, x - w / 2));
+    if (top < 0) top = y + 16;
+    tip.style.left = `${left}px`;
+    tip.style.top = `${top}px`;
+  }
+
+  function hideTip() {
+    tip.classList.remove('on');
+    if (active >= 0 && groups[active]) groups[active].classList.remove('hot');
+    active = -1;
+  }
+
+  svg.addEventListener('pointermove', (event) => {
+    const box = svg.getBoundingClientRect();
+    const px = event.clientX - box.left, py = event.clientY - box.top;
+    let best = -1, bestDistance = 36;   // px; generous so the target is far bigger than the mark
+    screen.forEach(([x, y], i) => {
+      if (!groups[i]) return;
+      const d = Math.hypot(x - px, y - py);
+      if (d < bestDistance) { best = i; bestDistance = d; }
+    });
+    if (best !== active) (best >= 0 ? show(best) : hideTip());
+  });
+  svg.addEventListener('pointerleave', hideTip);
+
+  render();
+  new ResizeObserver(render).observe(plot);
+})();
+</script>
+</body>
+</html>

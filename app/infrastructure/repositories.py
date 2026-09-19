@@ -4,11 +4,12 @@ from collections.abc import Sequence
 from typing import cast
 from uuid import UUID
 
-from sqlalchemy import select, func, delete, Select
+from sqlalchemy import Select, func, select
 from sqlalchemy.orm import Session
 
 from app.domain.models import DocumentSnapshot, DocumentStatus
-from app.infrastructure.orm import KnowledgeBaseRow, DocumentRow, ChunkRow
+from app.infrastructure.orm import ChunkRow, DocumentRow, KnowledgeBaseRow
+
 
 class DocumentRepository:
     """Repository for managing documents and their chunks.
@@ -16,7 +17,7 @@ class DocumentRepository:
      KnowledgeBaseRow
        -> DocumentRow (filtered by knowledge_base_id, hash, status, etc.)
        -> ChunkRow count for each document
-       -> DocumentSnapshot returned to the application layer    
+       -> DocumentSnapshot returned to the application layer
     """
 
     def __init__(self, session: Session) -> None:
@@ -26,7 +27,7 @@ class DocumentRepository:
         """Find an active document by its SHA256 hash."""
         statement = self._snapshot_statement().where(
             DocumentRow.knowledge_base_id == knowledge_base_id,
-            DocumentRow.sha256 == sha256, 
+            DocumentRow.sha256 == sha256,
             DocumentRow.status != DocumentStatus.DELETED.value,
         )
         # Build the SQL statement first, then execute it once against the database.
@@ -102,8 +103,8 @@ class DocumentRepository:
 class KnowledgeBaseRepository:
     """Repository for managing knowledge bases."""
 
-    def __init__(self,session:Session)->None:
-        self.session=session
+    def __init__(self, session: Session) -> None:
+        self.session = session
 
     def get_version(self, knowledge_base_id: UUID) -> int:
         version = self.session.scalar(

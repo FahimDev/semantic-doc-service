@@ -18,6 +18,26 @@ services:
       timeout: 5s
       retries: 20
 
+  pgadmin:
+    # Browse tables, run SQL, and draw an ERD (right-click the database > ERD For Database).
+    # Open http://localhost:5050 - no login, and the local server is pre-registered.
+    image: dpage/pgadmin4:9.18
+    environment:
+      PGADMIN_DEFAULT_EMAIL: admin@example.com
+      PGADMIN_DEFAULT_PASSWORD: admin
+      # Desktop mode skips the login page; it is only safe because the port is bound to localhost.
+      PGADMIN_CONFIG_SERVER_MODE: "False"
+      PGADMIN_CONFIG_MASTER_PASSWORD_REQUIRED: "False"
+    ports:
+      - "127.0.0.1:5050:80"
+    volumes:
+      # Registered on container creation. No data volume on purpose: recreating the container
+      # re-reads this file, so it never drifts from the compose credentials.
+      - ./docker/pgadmin/servers.json:/pgadmin4/servers.json:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+
   redis:
     image: redis:8.2-alpine
     ports:
@@ -30,6 +50,21 @@ services:
       interval: 5s
       timeout: 3s
       retries: 20
+
+  redisinsight:
+    # Browse keys, run commands, and inspect the semantic-cache search index.
+    # Open http://localhost:5540 - no login, and the local Redis is pre-registered.
+    image: redis/redisinsight:3.8
+    environment:
+      # Pre-registers the local Redis so the UI opens with the connection ready.
+      RI_REDIS_HOST: redis
+      RI_REDIS_PORT: "6379"
+      RI_REDIS_ALIAS: policy-vault (local)
+    ports:
+      - "127.0.0.1:5540:5540"
+    depends_on:
+      redis:
+        condition: service_healthy
 
 volumes:
   postgres_data:

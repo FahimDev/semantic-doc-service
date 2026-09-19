@@ -83,9 +83,7 @@ def upgrade() -> None:
         sa.Column(
             "created_at", sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False
         ),
-        sa.UniqueConstraint(
-            "document_id", "chunk_index", name="uq_chunks_document_chunk_index"
-        ),
+        sa.UniqueConstraint("document_id", "chunk_index", name="uq_chunks_document_chunk_index"),
     )
     op.create_index("ix_chunks_document_id", "chunks", ["document_id"])
 
@@ -112,7 +110,7 @@ def upgrade() -> None:
     op.execute(
         sa.text(
             "INSERT INTO knowledge_bases (id, name, version) "
-            "VALUES (:id, 'default', 1)"
+            "VALUES (CAST(:id AS uuid), 'default', 1)"
         ).bindparams(id=DEFAULT_KB_ID)
     )
 

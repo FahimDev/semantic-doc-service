@@ -1,0 +1,14 @@
+{
+  "Servers": {
+    "1": {
+      "Name": "policy-vault (local)",
+      "Group": "Servers",
+      "Host": "postgres",
+      "Port": 5432,
+      "MaintenanceDB": "policy_vault",
+      "Username": "policy_vault",
+      "SSLMode": "prefer",
+      "PasswordExecCommand": "echo policy_vault"
+    }
+  }
+}

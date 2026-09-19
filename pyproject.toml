@@ -42,6 +42,7 @@ dev = [
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+pythonpath = ["."]
 addopts = "-q --strict-markers"
 markers = ["integration: requires PostgreSQL/pgvector and Redis"]
 

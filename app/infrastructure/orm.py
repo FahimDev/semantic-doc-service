@@ -10,14 +10,24 @@ from typing import Any
 from uuid import UUID, uuid4
 
 from pgvector.sqlalchemy import Vector
-from sqlalchemy import DateTime, ForeignKey, Index, String, Integer, Text, UniqueConstraint, func
-from sqlalchemy.orm import Mapped, mapped_column, relationship
-
+from sqlalchemy import (
+    DateTime,
+    ForeignKey,
+    Index,
+    Integer,
+    String,
+    Text,
+    UniqueConstraint,
+    func,
+    text,
+)
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.dialects.postgresql import UUID as PG_UUID
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.constants import EMBEDDING_DIMENSIONS
 from app.infrastructure.database import Base
+
 
 class KnowledgeBaseRow(Base):
     """Knowledge base metadata row."""
@@ -26,51 +36,81 @@ class KnowledgeBaseRow(Base):
 
     id: Mapped[UUID] = mapped_column(PG_UUID(as_uuid=True), primary_key=True)
     name: Mapped[str] = mapped_column(String(200), nullable=False, unique=True)
-    # Version is incremented whenever the knowledge base is updated, so clients can detect changes.
+    # Version is incremented whenever searchable knowledge changes, so caches can be invalidated.
     version: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
-    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now())
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now()
+    )
 
 
 class DocumentRow(Base):
     """Document metadata row."""
 
-    
     __tablename__ = "documents"
 
     id: Mapped[UUID] = mapped_column(PG_UUID(as_uuid=True), primary_key=True, default=uuid4)
-    knowledge_base_id: Mapped[UUID] = mapped_column(ForeignKey("knowledge_bases.id"), nullable=False)
-    filename: Mapped[str] = mapped_column(String(200), nullable=False)
+    knowledge_base_id: Mapped[UUID] = mapped_column(
+        PG_UUID(as_uuid=True), ForeignKey("knowledge_bases.id"), nullable=False
+    )
+    filename: Mapped[str] = mapped_column(String(255), nullable=False)
     content_type: Mapped[str] = mapped_column(String(100), nullable=False)
+    storage_key: Mapped[str] = mapped_column(String(500), nullable=False, unique=True)
+    # SHA-256 makes client retries idempotent and detects identical bytes.
     sha256: Mapped[str] = mapped_column(String(64), nullable=False)
-    status: Mapped[str] = mapped_column(String(20), nullable=False, default="READY")
-    page_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
-    chunk_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
-    deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    status: Mapped[str] = mapped_column(String(20), nullable=False)
+    page_count: Mapped[int] = mapped_column(Integer, nullable=False)
+    # JSONB holds parser/embedding recipe metadata, not core relational identity.
+    metadata_json: Mapped[dict[str, Any]] = mapped_column(
+        "metadata", JSONB, nullable=False, default=dict, server_default=text("'{}'::jsonb")
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now()
+    )
+    deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+    chunks: Mapped[list["ChunkRow"]] = relationship(
+        back_populates="document", cascade="all, delete-orphan"
+    )
 
     __table_args__ = (
         Index("ix_documents_knowledge_base_id", "knowledge_base_id"),
         Index("ix_documents_status", "status"),
+        # Identical bytes may be re-uploaded only once the earlier record is fully DELETED.
+        Index(
+            "uq_documents_active_sha",
+            "knowledge_base_id",
+            "sha256",
+            unique=True,
+            postgresql_where=text("status <> 'DELETED'"),
+        ),
     )
 
 
 class ChunkRow(Base):
+    """Chunk text with its embedding and provenance offsets."""
+
     __tablename__ = "chunks"
 
     id: Mapped[UUID] = mapped_column(PG_UUID(as_uuid=True), primary_key=True, default=uuid4)
-    document_id: Mapped[UUID] = mapped_column(PG_UUID(as_uuid=True),
+    document_id: Mapped[UUID] = mapped_column(
+        PG_UUID(as_uuid=True),
         ForeignKey("documents.id", ondelete="CASCADE"),
         nullable=False,
     )
+    # Page and character positions support citations back to source text.
     page_number: Mapped[int] = mapped_column(Integer, nullable=False)
     chunk_index: Mapped[int] = mapped_column(Integer, nullable=False)
     char_start: Mapped[int] = mapped_column(Integer, nullable=False)
     char_end: Mapped[int] = mapped_column(Integer, nullable=False)
-    content: Mapped[str] = mapped_column(Text, nullable=False)  
-
+    content: Mapped[str] = mapped_column(Text, nullable=False)
     # vector(384) is a database invariant; mismatched inserts fail.
-    embedding: Mapped[list[float]] = mapped_column(Vector(EMBEDDING_DIMENSIONS))
+    embedding: Mapped[list[float]] = mapped_column(Vector(EMBEDDING_DIMENSIONS), nullable=False)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )
@@ -81,6 +121,7 @@ class ChunkRow(Base):
         UniqueConstraint("document_id", "chunk_index", name="uq_chunks_document_chunk_index"),
         Index("ix_chunks_document_id", "document_id"),
     )
+
 
 class OutboxEventRow(Base):
     # Why this row exists:
@@ -108,6 +149,3 @@ class OutboxEventRow(Base):
     last_error: Mapped[str | None] = mapped_column(Text)
 
     __table_args__ = (Index("ix_outbox_pending", "processed_at", "locked_at", "created_at"),)
-
-
-
